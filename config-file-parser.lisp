@@ -2,7 +2,7 @@
 
 ;;; should read in commands from the CLI
 
-;; preliminary file opening to read into the parser and utils
+;;; preliminary file opening to read into the parser, and some utils
 (defparameter *file* (uiop:read-file-lines ".testconfigrc"))
 
 (defun get-file-line (f ln)
@@ -24,6 +24,9 @@
   (if (null l1)
       '()
       (cons (car l1) (cons (car l2) (combine-list (cdr l1) (cdr l2))))))
+
+(defun plist-member (token plist)
+  (member token plist))
 
 ;;; tree stuff
 
@@ -62,10 +65,10 @@
 ;;; tokenization phase
 
 (defvar letter-list
-'("A" "B" "C" "D" "E" "F" "G" "H" "I" "J" "K" "L" "M" "N" "O" "P" "Q" "R" "S" "T" "U" "V" "W" "X" "Y" "Z" "a" "b" "c" "d" "e" "f" "g" "h" "i" "j" "k" "l" "m" "n" "o" "p" "q" "r" "s" "t" "u" "v" "w" "x" "y"))
+  '("A" "B" "C" "D" "E" "F" "G" "H" "I" "J" "K" "L" "M" "N" "O" "P" "Q" "R" "S" "T" "U" "V" "W" "X" "Y" "Z" "a" "b" "c" "d" "e" "f" "g" "h" "i" "j" "k" "l" "m" "n" "o" "p" "q" "r" "s" "t" "u" "v" "w" "x" "y"))
 
 (defvar symbol-list
-'("." ":" ";" "(" ")" "\'" "\"" "#" "@" "+" "|" "`" "[" "{" "&" "=" "}" "]" "*" "!" "%" "$" "~" "\\" "-" "_" "/" "?" "^"))
+  '("." ":" ";" "(" ")" "\'" "\"" "#" "@" "+" "|" "`" "[" "{" "&" "=" "}" "]" "*" "!" "%" "$" "~" "\\" "-" "_" "/" "?" "^"))
 
 (defvar digit-list '(1 2 3 4 5 6 7 8 9 0))
 
@@ -73,40 +76,66 @@
 
 (defvar symbols-plist (combine-list (get-char-code-l symbol-list) symbol-list))
 
-(defparameter x (make-string-input-stream "123 foo bar"))
+;;; Grammar classes
 
-;; figure out how to create tokens (x) and create trees (✓) of pass and fail branches
-(defun %test-token (stream)
-  (let* ((x (gensym))
-        (c (read-char stream nil x)))
-    (cond
-      ((equal c x)
-       (make-bin-tree-node (make-bin-tree-leaf 'end)
-                           '()
-                           '()))
-      ((plist-member (char-code c) symbols-plist)
-       (make-bin-tree-node (make-bin-tree-leaf c)
-                           (%test-token stream)
-                           '()))
-      ((plist-member (char-code c) letter-plist)
-       (make-bin-tree-node (make-bin-tree-leaf c)
-                           (%test-token stream)
-                           '()))
-      (t (make-bin-tree-node (make-bin-tree-leaf c)
-                             '()
-                             (%test-token stream))))))
+(defclass identifier ()
+  ((id :accessor get-identifier-id
+       :initarg :id)))
 
-(defun plist-member (token plist)
-  (member token plist))
+(defclass _add ()
+  ((left :accessor get-add-left
+         :initarg :left)
+   (right :accessor get-add-right
+          :initarg :right)))
 
-(defparameter y (make-string-input-stream "abc 123 +[{ +1a{4"))
-(%test-token y)
+(defclass _mult ()
+  ((left :accessor get-mult-left
+         :initarg :left)
+   (right :accessor get-mult-right
+          :initarg :right)))
 
+(defclass _keyword ()
+  ((id :accessor get-keyword-id
+       :initarg :id)
+   (pointer :accessor get-keyword-pointer
+            :initarg :pointer)))
 
-(member (char-code #\c) letter-plist)
+;; constructors
+
+(defun make-identifier (value)
+   (make-instance 'identifier :id value))
 
 
-(defun %integer (stream)
-  )
+;;; Print methods to visualize the AST. Prints it in evaluable format :)
+(defgeneric print-class (instance type)
+  (:documentation "Pretty prints the class' tree structure in S-expression format"))
 
-(read-char x)
+(defmethod print-class ((instance identifier) (type symbol))
+  (declare (ignorable type))
+  (get-identifier-id instance))
+
+(defmethod print-class ((instance _add) (type symbol))
+  (list '+
+        (print-class (get-add-left instance) (type-of (get-add-left instance)))
+        (print-class (get-add-right instance) (type-of (get-add-right instance)))))
+
+(defmethod print-class ((instance _mult) (type symbol))
+  (list '*
+        (print-class (get-mult-left instance) (type-of (get-mult-left instance)))
+        (print-class (get-mult-right instance) (type-of (get-mult-right instance)))))
+
+(defmethod print-class ((instance _keyword) (type symbol))
+  (list
+    (get-keyword-id instance)
+    (print-class (get-keyword-pointer instance) (type-of (get-keyword-pointer instance)))))
+
+
+;;; Some test parsing functions as a proof of concept
+(defun parse-letter (obj)
+  (member (char-code obj) letter-plist))
+
+(defun parse-word (stream)
+  (let ((cursor (read-char stream)))
+   (if (parse-letter cursor)
+       (cons cursor (parse-word stream))
+       '())))
